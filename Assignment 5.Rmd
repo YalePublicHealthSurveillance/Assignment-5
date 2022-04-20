@@ -94,7 +94,7 @@ analysis <- evaluatr.init(
   eval_period_start = "2012-01-01", #We ignore first few years to allow for vaccine ramp up
   eval_period_end = "2016-12-01", #The evaluation period lasts 5 years
   n_seasons = 12, #This is monthly data, so select 12
-  year_def = "cal_year", # we are in southern hemisphere, so aggregate results by calendar year (Jan-Dec)
+  year_def = "epi_year", # we are in Northern hemisphere, so aggregate results by epidemiological year (Jul-Jun)
   group_name = "age",  #Strata categry name
   date_name = "date", #Date variable name
   outcome_name = "Pneum", #Outcome variable name
