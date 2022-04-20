@@ -12,4 +12,5 @@ d2$age <- as.character(d2$age)
 d2$age[d2$age=='1'] <- '2-11m'
 d2$age[d2$age=='8'] <- '80+ years of age'
 
+d2 <- d2[d2$date<='2004-12-31',]
 saveRDS(d2, './Data/US.rds')
