@@ -21,11 +21,11 @@ You have been asked to evaluate the impact of the introduction of pneumococcal c
 Your task is to write a 1 page 'executive summary' of the impact of PCVs on hospitalization for pneumonia in infants (2-11 month olds), as well as possible indirect effect of the vaccine on older adults (age 80+ years). 
 - *The target audience for this is the ACIP Working group on Pneumococcal Vaccination*. This is a group of subject matter experts including individuals from the CDC, academia, and medicine who evaluate evidence and provide guidance on vaccine policy to the broader ACIP. You can include plots as needed, but be strategic.
 
-- For both age groups, you should evaluate the output from 2 analyses: synthetic controls analysis and interrupted time series. Both of these are run at the same time using the InterventionEvaluatR package (you don't need to separately code an interrupted time series analysis). You should mention the agreement/disagreement between methods in your summary.
+- For both age groups, you should evaluate the output from 2 types of analyses: an interrupted time series analysis and a synthetic control-type analysis (fit to pre-vaccine data and include control time series)  You should mention the agreement/disagreement between methods in your summary and which specific variables/parameters you used.
 
 - You should also discuss the strength of the evidence. Your judgement on this can be influenced by the uncertainty intervals of the estimates, by concordance/discordance between methods, by univariate analyses with different controls, and by prior expectation of what a reasonable range of results would be
 
--As a denominator, you should select 'all_cause_no_resp' (all cause hospitalizations, excluding those with a respiratory cause)
+-As a denominator, you could consider select 'all_cause_no_resp' (all cause hospitalizations, excluding those with a respiratory cause)
 
 *You can work in groups of 1-3 people for this assignment (you only need to hand in 1 assignment per group on canvas; please write all the names on the assignment)*
 
