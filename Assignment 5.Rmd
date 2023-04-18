@@ -19,7 +19,7 @@ knitr::opts_chunk$set(echo = TRUE)
 You have been asked to evaluate the impact of the introduction of pneumococcal conjugate vaccine (PCV7) in the US. PCV7 was introduced for use in infants in the US in March 2000, with a 4 dose schedule (doses at 2,4,6,12 months of age). These data come from hospitalizations from 8 large states (combined together). 
 
 Your task is to write a 1 page 'executive summary' of the impact of PCVs on hospitalization for pneumonia in infants (2-11 month olds), as well as possible indirect effect of the vaccine on older adults (age 80+ years). 
-- *The target audience for this is the ACIP Working roup on Pneumococcal Vaccination*. This is a group of subject matter experts including individuals from the CDC, academia, and medicine who evaluate evidence and provide guidance on vaccine policy to the broader ACIP. You can include plots as needed, but be strategic.
+- *The target audience for this is the ACIP Working group on Pneumococcal Vaccination*. This is a group of subject matter experts including individuals from the CDC, academia, and medicine who evaluate evidence and provide guidance on vaccine policy to the broader ACIP. You can include plots as needed, but be strategic.
 
 - For both age groups, you should evaluate the output from 2 analyses: synthetic controls analysis and interrupted time series. Both of these are run at the same time using the InterventionEvaluatR package (you don't need to separately code an interrupted time series analysis). You should mention the agreement/disagreement between methods in your summary.
 
@@ -29,205 +29,138 @@ Your task is to write a 1 page 'executive summary' of the impact of PCVs on hosp
 
 *You can work in groups of 1-3 people for this assignment (you only need to hand in 1 assignment per group on canvas; please write all the names on the assignment)*
 
-The code below is from the South Africa exercise so might need to be tweaked for this analysis.
+The code below is from the in-person exercise and needs to be modified to find an optimal analysis.
 
 
-### Load the libraries we need for this exercise. 
+### Load the libraries we need 
 
 ```{r}
-#install.packages(c('lubridate', 'RCurl','devtools','xtable','knitr','htmlTable','coda','rmdformats','httr'))
-#library(devtools) 
-#devtools::install_github("https://github.com/weinbergerlab/InterventionEvaluatR", ref='InterventionEvaluatR-lite')
-
-library(lubridate)
-library(RCurl)
-library(knitr)
-library(htmlTable)
-library(InterventionEvaluatR)
-library(coda)
-library(rmdformats)
-library(httr)
-library(pbapply)
-library(INLA)
-library(xtable)
+library(dplyr)
 library(ggplot2)
+library(MASS)
+library(lubridate)
+library(plotly)
+source('./R/its_outputs.R')
+source('./R/control_outputs.R')
+
+source('./R/scale.fun.R')
+source('./R/run_its.R')
+source('./R/run_control.R')
 
 ```
 
 ## Read in the data
 ```{r}
-d2 <- readRDS('./Data/US.rds')
+a2 <- readRDS('./Data/US.rds') %>%
+  select(Pneum, date, age,all_cause_no_resp, starts_with('X_') ) %>%
+  filter(date <= '2005-12-01') %>%
+  filter(age=='2-11m') #select the age group here
 ```
 
-
-
-## Plot your time series
-
-
-Add labels and reference line a y=0 (this also automatically extends the axis down to 0, which is desirable)
-
-```{r, fig.width=8, fig.height=3}
-
- p4 <- ggplot(d2, aes(x=date, y=Pneum, group=age)) +
-      geom_line() +
-      facet_wrap(~age , scales='free') +
-      theme_classic() +
-     ylab("Number of pneumonia hospitalizations") +
-      xlab("Date") + 
-      geom_hline(yintercept=0, col='gray', lty=2) 
- p4
-
-```
-
-
-## Set parameters for analysis with InterventionEvaluatR
-
-Here we need to set a few parameters. We use the evaluatr.init() function to specify the name of the dataset, the date at which the vaccine is introduced, the date at which we want to begin evaluating the vaccine (typically 1-2 year after vaccine introduction). We also provide some information on the dataset, sch as whether the data are monthly or quarterly (n_seasons), the variable names for the grouping variable, the date variable, the outcome variable, and the denominator variable (if any). 
-
-```{r ,setup_data, echo=TRUE}
-
-d2$one <- 1 
-
-analysis <- evaluatr.init(
-  country = "South Africa", data = d2,
-  post_period_start = "2009-04-01", #First 'post-intervention' month is April 2009
-  eval_period_start = "2012-01-01", #We ignore first few years to allow for vaccine ramp up
-  eval_period_end = "2016-12-01", #The evaluation period lasts 5 years
-  n_seasons = 12, #This is monthly data, so select 12
-  year_def = "epi_year", # we are in Northern hemisphere, so aggregate results by epidemiological year (Jul-Jun)
-  group_name = "age",  #Strata categry name
-  date_name = "date", #Date variable name
-  outcome_name = "Pneum", #Outcome variable name
-  denom_name = "one" , #Denominator variable name
-  log.covars=TRUE, #log-transform the covariates
-  error_dist= 'iid',
-)
-set.seed(1)
-
-```
-
-
-## Run a simple analysis controlling for 1 control variable at a time
-
-Before getting into more complicated analyses, we will first try to fit a simple Poisson regression model (with overdispersion) where we adjust for seasonality and 1 control variable at a time. this allows us to see how the use of different controls influences the results
-
-```{r univariate, echo = T, results = 'hide',warning=FALSE, message = FALSE}
- glmer_results= evaluatr.univariate(analysis)
-# saveRDS(glmer_results,'./Results/univariate_results_SA.rds')
-```
-
-
-
-Then plot the results. The results are ordered by goodness of fit (based on AIC scores), with best fitting covariates on top. Each plot represents a different age group. Overall, we see a generally consistent pattern. The use of the subchapter R00-09 as a control variable leads to estimates that are closer to 1 (no effect). This subchapter is "Symptoms and signs involving the circulatory and respiratory systems". These are often considered non-specific 'junk' codes. There could be arguments for or against using this subchapter as a control. On the downside, it is possible that actual pneumonia deaths incorrectly were assigned a code of R00-99, and the vaccine could therefore reduce the incidence of R00-09 codes and bias the estimates towards no effect. On the upside, the use of these junk codes as a control could help to adjust for underlying improvements or changes in coding quality.   
-
-```{r univariate_plot,fig.width=4, fig.height=5}
-par(mar=c(4,5,1,1)) #fix margins
-group.labels<-as.character(unique(analysis$input_data[,analysis$group_name]))
-lapply(glmer_results,evaluatr.univariate.plot)
-```
-
-## Run Synthetic control analysis
-
-For teaching purposes, this code has been pre-run since it takes some time and computational resources.
-
-```{r,message = FALSE,warning=FALSE}
-ptm <- proc.time()
-
-impact_results = evaluatr.impact(analysis)
-proc.time() - ptm
-
-saveRDS(analysis,'./Results/analysis_post_run_SA.rds') #reads in analysis object that was modified after running SC
-
-saveRDS(impact_results,'./Results/SA_sc.rds')
-```
-
-
-
-
-## Generate and save the plots
-```{r mainplot1, echo=FALSE}
-plots <- evaluatr.plots(analysis)
-```
-
-### Plot the results for 1 age group
-### First look at the results from the synthetic controls model for 1 age group.
-
-This first plot shows a monthly time series, with observed, fitted, and counterfacual values. The observed number of deaths is shown in the black line. The fitted values for the pre-vaccine period are shown in the red dotted line, and the counterfactual estimate with its 95% credible interval is shown as the white dotted line and gray shaded area. if the black line is below the gray shaded area, this would indicate that obsrved cases are lower than expected based on changes in the control diseases in the post-vaccine period. If the controls appropriately adjust for underlying trends, then this would reflect an effect of the vaccine. 
-
-In the 1-11 month olds, we can clearly see the observed data going below the expected values after vaccination. This suggests that pneumonia is declining more than would be expected based on the decline in the control diseases.
-```{r, fig.width=5, fig.height=4}
-      plots$groups[["1-11 months"]]$pred_full 
-```
-
-
-It is sometimes easier to look at the results if we aggregate the observed and expected values up to the annual time scale. Here the observed values are shown as black dots. When the black dots go below the gray shaded area, this indicates that the observed cases are lower than expected based on changes in the control diseases in the post-vaccine period. If the controls appropriately adjust for underlying trends, then this would reflect an effect of the vaccine. 
-
-```{r, fig.width=5, fig.height=4}
-      plots$groups[["1-11 months"]]$pred_full_agg 
-```
-
-
-Finally, we can look at the cumulative cases prevented. In this example, there have been 445 cases prevented (95%CrI: 58, 931) from the time of vaccine introduction to the last day month of the study period. This is calculated by takin the difference between the observed and fitted number of cases in each month, and summing them. If atleast 1 control disease is identified from the synthetic controls model, then the result here is drawn from that model, otherwise, it is drawn from the STL+PCA model.
-
-```{r, fig.width=5, fig.height=4}
-      plots$groups[["1-11 months"]]$cumsum_prevented 
-```
-
-
-## Printing plots for all models and age groups
-We instead might want to just print everything for all age groups and models. We can use the following code to do that
-
-## Plot Observed vs expected yearly time series
-
-For the synthetic controls analyses, we can see clear effects of PCV in children (where the vaccine is used), but not in adults. This suggests that the indirect effects of PCVs, observed in other populations, are not protecting adults from death in this population. It is also clear here why the unadjusted time trend model fails due to the non-linear shape of the trend in the pre-vaccine period. 
-```{r plots2, results = 'asis', fig.width=5, fig.height=4}
-      par(mfrow=c(4,1))
-
-for (group in names(plots$groups)) {
-      print(plots$groups[[group]]$pred_full_agg )
-      print(plots$groups[[group]]$pred_time_agg )
-}
-```
-
-
-### Compare estimates from different models
-This shows the estimated rate ratio and 95% credible intervals from a synthetic controls analysis; a time-trend analysis where we used the specified denominator (all non-respiratory deaths) to adjust the number of pneumonia deaths in each month and a linear trend for time; a classic interrupted time series analysis (segmented regression); and the STL+PCA approach, which smooths and combines the control variables prior to including them in the model. 
-```{r Comparison of estimates from different models, results="asis"}
-results.table<- cbind.data.frame(
-  impact_results$full$rr_mean_intervals, 
-  impact_results$its$rr_mean_intervals)
-
-  table<-xtable(results.table)
-
-    htmlTable(table)
-```
-
-
-### Cases averted
-How many cases were prevented from the time of vaccine introduction to the last time point in each stratum (+/- 95% CrI)? You can modify the number 'last.point' to pull out the cumulative number of cases at any point in the time series. In this case we are printing results fromthe SC model
+Set parameters here for the model
 ```{r}
-last.point<-dim(impact_results$full$cumsum_prevented)[1]
-cum.prevented<-impact_results$full$cumsum_prevented[last.point,,]
-```
+vax.intro.date= as.Date('2000-01-01')
 
-Format and print table 
-```{r}
-cum1<- round(t(cum.prevented))
-cum2<- paste0(cum1[,'50%'], ' (', cum1[,'2.5%'],', ',cum1[,'97.5%'],')')
-cum3<-cbind.data.frame(row.names(cum1), cum2)
-names(cum3)<-c('Stratum','Cases Averted (95% CrI)')
-  htmlTable(cum3, align='l')
+months_until_second_knot = 12 #how many months between vaccine intro and start of evaluation period
+
+months_until_third_knot = 48  #if there is a 2nd change in slope, how many months after vaccine intro does it occur? if no 2nd change, set as 999
+
 ```
 
 
-Look at the betas--which are most influential?
+
 
 ```{r}
-beta.check <- lapply(impact_results$full$groups,'[[','beta')
+form_its1 <- as.formula ("Pneum ~ month+ index + spl1 + spl2   +spl3 + offset(all_cause_no_resp)")
 
-beta.check <- lapply(beta.check,function(x) x[order(-abs(x[,1])),])
-beta.check
+
+mod1 <- run_its(set.vax.intro.date= vax.intro.date, set.form_its1=form_its1, months_until_third_knot=months_until_third_knot, months_until_second_knot=months_until_second_knot )
+
+summary(mod1$mod1)
+
+mod1$mod1$aic #AIC score
+
+```
+
+Run this function to generate uncertainty intervals and summary stats for the ITS model
+
+```{r}
+mod1.outputs <- its_outputs(mod1)
+
+```
+
+Ratio for entire evaluation period
+
+```{r}
+mod1.outputs$rr.q.post
+```
+
+Rate ratio over time from ITS
+```{r}
+mod1.outputs$p.rr.trend +ggtitle('Rate Ratio over time following vaccine introduction')
+```
+
+Observed vs expected by month. Observed=red; black=fitted; gray shaded area=counterfactual
+```{r}
+mod1.outputs$p.preds
+```
+
+Observed vs expected by year Observed=red; black=fitted; gray shaded area=counterfactual
+```{r}
+mod1.outputs$p.preds.agg
+```
+
+Cumulative cases prevented
+```{r}
+ggplotly(mod1.outputs$p.cum_prevented)
 ```
 
 
+## Model 2: Fit to pre-period, and project forward (similar to synthetic controls)
 
+Note you could adjust for trend (with index) or not here; it is debatable what the best strategy is. Just be consistent and justify your approach, and specify it a priori.
+
+```{r}
+
+form_control <- as.formula ("Pneum_pre ~ month+ X_001_139_SY + X_240_279+ X_280_289 + X_320_359_SY + X_390_459 + X_520_579 + all_cause_no_resp+ X_580_629 + X_680_709 + X_780_799 + X_800_999 + X_V00_V91")
+
+mod2 <- run_control(set.vax.intro.date= vax.intro.date, set.form_cont1=form_control)
+
+summary(mod2$mod1)
+
+mod2$mod1$aic #AIC score (note cannot be compared with ITS model because they are fit to different sets of Y variables)
+
+```
+format the outputs, generate plots
+
+```{r}
+mod2.outputs <- control_outputs(fitted.mod=mod2,months.start=months_until_second_knot,
+                                set.vax.intro.date=vax.intro.date,set.months_until_second_knot=months_until_second_knot)
+```
+
+Rate ratio for eval period
+
+```{r}
+mod2.outputs$rr.q.post
+
+```
+
+Rate ratio at each time points
+
+```{r}
+mod2.outputs$p.rr.trend
+```
+
+Observed vs expected by month
+```{r}
+mod2.outputs$p.preds
+```
+
+Observed vs expected by year
+```{r}
+mod2.outputs$p.preds.agg
+```
+
+```{r}
+ggplotly(mod2.outputs$p.cum_prevented)
+```
